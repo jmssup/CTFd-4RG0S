@@ -104,3 +104,4 @@ CTFd/themes/*
 
 # CTFd-whale
 !CTFd/plugins/ctfd-whale/
+!CTFd/plugins/ctfd-whale/**
