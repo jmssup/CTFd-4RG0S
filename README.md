@@ -57,6 +57,70 @@ To use the auto-generated Docker images directly:
 
 `docker run -p 8000:8000 -it ctfd/ctfd`
 
+### CTFd-Whale 연동 메모
+
+이 저장소는 CTFd 오픈소스에 [CTFd-Whale](https://github.com/frankli0324/ctfd-whale) 플러그인을 `CTFd/plugins/ctfd-whale` 경로로 연결한 구성입니다. `docker-compose.yml`은 CTFd, nginx, MariaDB, Redis, frps, frpc를 함께 실행하며 CTFd 컨테이너가 호스트 Docker Engine을 제어할 수 있도록 `/var/run/docker.sock`을 마운트합니다.
+
+#### 실행 전 준비
+
+1. `.env.example`을 기준으로 `.env`를 만들고 `FRP_TOKEN`을 배포 환경에 맞게 변경합니다.
+2. Docker Swarm을 초기화하고 Whale이 사용할 노드 라벨을 설정합니다.
+
+```sh
+docker swarm init
+docker node update --label-add "name=linux-1" $(docker node ls -q)
+```
+
+3. challenge 컨테이너가 frpc와 붙을 overlay 네트워크를 미리 생성합니다.
+
+```sh
+docker network create --driver overlay --attachable ctfd_frp-containers
+```
+
+4. 이미지를 다시 빌드하고 서비스를 올립니다.
+
+```sh
+docker compose up -d --build
+```
+
+`whale-test/Dockerfile`은 Whale 연동 확인용 challenge 이미지입니다. 단일 노드 테스트에서는 아래처럼 로컬 이미지를 빌드한 뒤 challenge의 Docker Image 값으로 사용할 수 있습니다.
+
+```sh
+docker build -t whale-test:latest whale-test
+```
+
+멀티 노드 Swarm에서는 각 노드가 같은 이미지를 받을 수 있도록 registry에 push한 이미지명을 challenge에 설정해야 합니다.
+
+#### Whale 관리자 설정 예시
+
+CTFd 초기 설정 후 `/plugins/ctfd-whale/admin/settings`에서 다음 값을 기준으로 설정합니다.
+
+- Docker API URL: `unix:///var/run/docker.sock`
+- Docker Swarm Nodes: `linux-1`
+- Auto Connect Network: `ctfd_frp-containers`
+- FRP API URL: `http://frpc:7400`
+- Direct Minimum Port / Direct Maximum Port: `10000` / `10100`
+- HTTP Port: `8080`
+- Direct IP Address와 HTTP Domain Suffix는 참가자가 접근할 서버 IP 또는 도메인에 맞춥니다.
+
+#### Docker SDK / Docker Engine 호환성
+
+CTFd-Whale 플러그인의 Python 의존성은 `CTFd/plugins/ctfd-whale/requirements.txt`에서 `docker==4.1.0`으로 고정되어 있습니다. Docker SDK와 Docker Engine API 협상 문제를 피하기 위해 `CTFd/plugins/ctfd-whale/utils/docker.py`에서 SSL 사용 여부와 관계없이 `docker.DockerClient(..., version="1.44")`를 명시하도록 수정했습니다.
+
+운영 서버의 Engine API가 이 값보다 낮으면 Whale이 Docker에 연결하지 못할 수 있습니다. 배포 전 호스트에서 아래 명령으로 API 버전을 확인하고, 낮은 경우 Docker Engine을 업그레이드하거나 `utils/docker.py`의 API 버전 핀을 해당 Engine이 지원하는 값으로 맞춥니다.
+
+```sh
+docker version --format '{{.Server.APIVersion}}'
+```
+
+`docker-compose.yml`에는 CTFd 컨테이너 환경변수로 `DOCKER_API_VERSION=auto`도 추가되어 있습니다. 단, Whale 플러그인 내부 Docker SDK 호출은 위의 `version="1.44"` 설정을 우선 기준으로 사용합니다.
+
+#### FRP 버전 호환성
+
+현재 compose 구성은 `snowdreamtech/frps:latest`, `snowdreamtech/frpc:latest`와 `conf/frp/*.toml` 설정 파일을 사용합니다. 최신 FRP는 기존 INI 스타일 proxy 블록 대신 TOML 형식의 `[[proxies]]`와 `localIP`, `localPort`, `remotePort`, `transport.useCompression` 키를 사용하므로 `CTFd/plugins/ctfd-whale/utils/routers/frp.py`를 이에 맞게 수정했습니다.
+
+FRP 이미지를 구버전으로 바꾸거나 플러그인을 원본으로 되돌리면 이 설정 형식이 다시 맞지 않을 수 있으니, FRP 이미지 버전과 Whale의 proxy config 생성 로직을 함께 확인해야 합니다.
+
 ### Development
 
 1. Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and run `uv sync` to create a virtualenv with the dependencies installed.
