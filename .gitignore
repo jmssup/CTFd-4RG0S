@@ -105,3 +105,10 @@ CTFd/themes/*
 # CTFd-whale
 !CTFd/plugins/ctfd-whale/
 !CTFd/plugins/ctfd-whale/**
+
+# SOW
+SOW/
+docs/
+
+# Task
+/CURRENT_TASK.md

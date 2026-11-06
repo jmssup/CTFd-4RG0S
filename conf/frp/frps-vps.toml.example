@@ -1,0 +1,10 @@
+# VPS Pwn TCP relay, FRP v0.71.0.
+# Store the real FRP_TOKEN in /etc/frp/frps.env, never in Git.
+bindPort = 7000
+
+auth.method = "token"
+auth.token = "{{ .Envs.FRP_TOKEN }}"
+
+allowPorts = [
+  { start = 10100, end = 10200 }
+]
